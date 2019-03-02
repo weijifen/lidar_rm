@@ -1,0 +1,3 @@
+float64 coordinate_x
+float64 coordinate_y
+float64 angle

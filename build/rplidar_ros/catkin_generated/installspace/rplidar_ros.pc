@@ -1,0 +1,8 @@
+prefix=/home/zhanggang/PRLIDAR/catkin_ws1/install
+
+Name: rplidar_ros
+Description: Description of rplidar_ros
+Version: 1.9.0
+Cflags: -I/home/zhanggang/PRLIDAR/catkin_ws1/install/include
+Libs: -L/home/zhanggang/PRLIDAR/catkin_ws1/install/lib 
+Requires: message_runtime

@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/home/zhanggang/PRLIDAR/catkin_ws1/devel/include",
+                "/opt/ros/kinetic/include",
+                "/home/zhanggang/PRLIDAR/catkin_ws1/src/serial_common/include",
+                "/usr/include"
+            ],
+            "name": "Linux",
+            "intelliSenseMode": "gcc-x64"
+        }
+    ],
+    "version": 4
+}

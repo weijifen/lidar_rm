@@ -1,0 +1,68 @@
+脚本启动于 2019年01月21日 星期一 11时46分58秒
+]0;zhanggang@zhanggang-Vostro-3549:~/PRLIDAR/catkin_ws1]7;file://zhanggang-Vostro-3549/home/zhanggang/PRLIDAR/catkin_ws1]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ roslaunch rplidar_ros test__rplidar.launch[A]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ [15Pcatkin_make
+[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Croslaunch rplidar_ros test__rplidar.launch
+[31m[test_rplidar.launch] is neither a launch file in package [rplidar_ros] nor is [rplidar_ros] a launch file name[0m
+[31mThe traceback for the exception was written to the log file[0m
+]0;zhanggang@zhanggang-Vostro-3549:~/PRLIDAR/catkin_ws1]7;file://zhanggang-Vostro-3549/home/zhanggang/PRLIDAR/catkin_ws1]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ roslaunch rplidar_ros test__rplidar.launch[A]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ [15Pcatkin_make
+[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Croslaunch rplidar_ros test__rplidar.launch[A]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ [15Pcatkin_make
+[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Croslaunch rplidar_ros [11Pcatkin_makeroslaunch rplidar_ros test__rplidar.launch[A]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ [3Psource devel/setup.bash
+[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C
+]0;zhanggang@zhanggang-Vostro-3549:~/PRLIDAR/catkin_ws1]7;file://zhanggang-Vostro-3549/home/zhanggang/PRLIDAR/catkin_ws1]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ source devel/setup.bashroslaunch rplidar_ros test__rplidar.launch
+... logging to /home/zhanggang/.ros/log/473e0732-1d2f-11e9-ab57-4cbb58469c6e/roslaunch-zhanggang-Vostro-3549-8214.log
+Checking log directory for disk usage. This may take awhile.
+Press Ctrl-C to interrupt
+Done checking log file disk usage. Usage is <1GB.
+]2;/home/zhanggang/PRLIDAR/catkin_ws1/src/rplidar_ros/launch/test_rplidar.launch
+[1mstarted roslaunch server http://zhanggang-Vostro-3549:40731/[0m
+
+SUMMARY
+========
+
+PARAMETERS
+ * /rosdistro: kinetic
+ * /rosversion: 1.12.14
+ * /rplidarNode/angle_compensate: True
+ * /rplidarNode/frame_id: laser
+ * /rplidarNode/inverted: False
+ * /rplidarNode/serial_baudrate: 115200
+ * /rplidarNode/serial_port: /dev/ttyUSB0
+
+NODES
+  /
+    rplidarNode (rplidar_ros/rplidarNode)
+    serial_common_node (serial_common/serial_common_node)
+
+auto-starting new master
+[1mprocess[master]: started with pid [8225][0m
+[1mROS_MASTER_URI=http://localhost:11311[0m
+]2;/home/zhanggang/PRLIDAR/catkin_ws1/src/rplidar_ros/launch/test_rplidar.launch http://localhost:11311
+[1msetting /run_id to 473e0732-1d2f-11e9-ab57-4cbb58469c6e[0m
+[1mprocess[rosout-1]: started with pid [8238][0m
+started core service [/rosout]
+[1mprocess[rplidarNode-2]: started with pid [8249][0m
+[1mprocess[serial_common_node-3]: started with pid [8255][0m
+[0m[ INFO] [1548042451.254146964]: RPLIDAR running on ROS package rplidar_ros. SDK Version:[0m
+RPLIDAR S/N: CED2F9C1E9839EF2C0E69EF717655205
+[0m[ INFO] [1548042451.760536704]: Firmware Ver: 1.20[0m
+[0m[ INFO] [1548042451.760597081]: Hardware Rev: 2[0m
+[0m[ INFO] [1548042451.762513704]: RPLidar health status : 0[0m
+*WARN* YOU ARE USING DEPRECATED API: checkExpressScanSupported(bool&,_u32), PLEASE MOVE TO getAllSupportedScanModes()
+*WARN* YOU ARE USING DEPRECATED API: getSampleDuration_uS, PLEASE MOVE TO RplidarScanMode::us_per_sample
+[0m[ INFO] [1548042452.288049857]: current scan mode: Express, max_distance: 16.0 m, Point number: 4.0K , angle_compensate: 1[0m
+[0m[ INFO] [1548042462.306324303]: : [serial_common:000.1  000.0  56.5][0m
+[0m[ INFO] [1548042462.546197232]: : [serial_common:000.0  000.0  148.5][0m
+[0m[ INFO] [1548042465.082253870]: : [serial_common:002.9  000.6  166.3][0m
+[0m[ INFO] [1548042471.274276212]: : [serial_common:000.1  000.3  67.7][0m
+[0m[ INFO] [1548042476.018238182]: : [serial_common:000.0  000.0  -85.2][0m
+[0m[ INFO] [1548042477.282177951]: : [serial_common:003.5  000.0  59.8][0m
+^C[serial_common_node-3] killing on exit
+[rplidarNode-2] killing on exit
+[rosout-1] killing on exit
+[master] killing on exit
+shutting down processing monitor...
+... shutting down processing monitor complete
+[1mdone[0m
+]0;zhanggang@zhanggang-Vostro-3549:~/PRLIDAR/catkin_ws1]7;file://zhanggang-Vostro-3549/home/zhanggang/PRLIDAR/catkin_ws1]0;zhanggang@zhanggang-Vostro-3549: ~/PRLIDAR/catkin_ws1[01;32mzhanggang@zhanggang-Vostro-3549[00m:[01;34m~/PRLIDAR/catkin_ws1[00m$ exit
+注销
+
+脚本完成，于 2019年01月21日 星期一 11时48分05秒
