@@ -1,38 +1,3 @@
-/*
- *  RPLIDAR ROS NODE
- *
- *  Copyright (c) 2009 - 2014 RoboPeak Team
- *  http://www.robopeak.com
- *  Copyright (c) 2014 - 2016 Shanghai Slamtec Co., Ltd.
- *  http://www.slamtec.com
- *
- */
-/*
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- *    this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT count++;SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- */
-//1ms
-
 #include "ros/ros.h"
 #include "sensor_msgs/LaserScan.h"
 #include "std_srvs/Empty.h"
@@ -47,6 +12,9 @@
 
 #include <queue>
 #define PI acos(-1)
+using namespace rp::standalone::rplidar;
+using namespace std;
+using namespace cv;
 
 int ksize = 5; //5         // ksize个点拟合一条直线
 double deltaAngMax = 20; // 小于deltaAngMax认为可能是一条直线
@@ -74,13 +42,134 @@ double hough(std::vector<std::vector<double>>& data, int count);
 int deltaAngle(int a,int b);
 void fit_line(std::vector<double> &kb,std::vector<cv::Point2d> &tempVec);
 
+double dis_cos(double ang1,double r1,double ang2,double r2){
+    return sqrt(r1*r1+r2*r2-2*r1*r2*cos(ang1-ang2));
+}
+double angle2Radian(double angle){
+    return angle/180*PI;
+}
+double radian2Angle(double radian){
+    return radian*180/PI;
+}
+void polyContourFit(std::vector<cv::Point2d> &XYdata,std::vector<int> &breakPoint,double eps){
+    int n=XYdata.size();
+    if(n<=2){
+        return;
+    }
+    double dis=distance(XYdata[0],XYdata[n-1]);
+    double cosTheta = (XYdata[n-1].x - XYdata[0].x) / dis;
+    double sinTheta = - ( XYdata[n-1].y - XYdata[0].y )/dis;
+    double MaxDis = 0;
+    int i ;
+    int maxDisInd = -1;
+    double dbDis;
+    for(i = 1 ; i < n - 1 ; i++)
+    {
+        // 进行坐标旋转，求旋转后的点到x轴的距离
+        dbDis = abs( (XYdata[i].y - XYdata[0].y) * cosTheta
+        + (XYdata[i].x - XYdata[0].x)* sinTheta);
+        if( dbDis > MaxDis)
+        {
+            MaxDis = dbDis;
+            maxDisInd = i;
+        }
+    }
+    if(MaxDis > eps)
+    {
+        std::vector<cv::Point2d> XYdataTemp;
+        copy(XYdata.begin(), XYdata.begin() + maxDisInd, std::back_inserter(XYdataTemp));
+        polyContourFit(XYdataTemp,breakPoint,100);
+
+        breakPoint.push_back(maxDisInd);
+
+        XYdataTemp.clear();
+        copy(XYdata.begin() + maxDisInd, XYdata.end(), std::back_inserter(XYdataTemp));
+        polyContourFit(XYdataTemp,breakPoint,100);
+        return;
+    }else
+    {
+        return;
+    }
+
+
+}
+double angleLength(std::vector<cv::Point2d> &XYdata,int a,int b,int c){
+    return distance(XYdata[a],XYdata[b])+distance(XYdata[b],XYdata[c]);
+}
+double directAngle(std::vector<cv::Point2d> &XYdata,int a,int b,int c){
+    double x1=XYdata[a].x-XYdata[b].x;
+    double y1=XYdata[a].y-XYdata[b].y;
+    double x2=XYdata[c].x-XYdata[b].x;
+    double y2=XYdata[c].y-XYdata[b].y;
+    return x1*y2-x2*y1;
+}
+bool isVertical(std::vector<cv::Point2d> &XYdata,int a,int b,int c){
+    // double x1=XYdata[a].x-XYdata[b].x;
+    // double y1=XYdata[a].y-XYdata[b].y;
+    // double x2=XYdata[c].x-XYdata[b].x;
+    // double y2=XYdata[c].y-XYdata[b].y;
+    double area=abs(directAngle(XYdata,a,b,c));
+    double l1=distance(XYdata[a],XYdata[b]);
+    double l2=distance(XYdata[b],XYdata[c]);
+    if(l1*l2/area>1.414){
+        return false;
+    }else
+    {
+        return true;
+    }
+
+}
+bool needFlip(std::vector<cv::Point2d> &XYdata,int a,int b){
+    return abs(XYdata[a].x-XYdata[b].x)<abs(XYdata[a].y-XYdata[b].y);
+}
+bool needFlip(std::vector<cv::Point2d> &XYdata){
+    int n=XYdata.size();
+    return abs(XYdata[0].x-XYdata[n-1].x)<abs(XYdata[0].y-XYdata[n-1].y);
+}
+vector<double> resolveKBAngle(std::vector<cv::Point2d> &XYdata){
+    double ang=0;
+    double r=0;
+    double k,b;
+    if(needFlip(XYdata)){
+        std::vector<cv::Point2d> YXdata(XYdata.size());
+        for(int i = 0; i < XYdata.size(); i++)
+        {
+            YXdata[i].x=XYdata[i].y;
+            YXdata[i].y=XYdata[i].x;
+        }
+        cv::Mat Mat_k = polyfit(YXdata, 1);
+        b = Mat_k.at<double>(0, 0);
+        k = Mat_k.at<double>(1, 0);
+        r=abs(b)/sqrt(k*k+1);
+        if (abs(k)<0.00001) {
+            k=k>0?100000:-100000;
+        }else
+        {
+            k=1.0/k;
+        }
+        ang=atan(k)*180/PI;
+
+    }else
+    {
+        cv::Mat Mat_k = polyfit(XYdata, 1);
+        b = Mat_k.at<double>(0, 0);
+        k = Mat_k.at<double>(1, 0);
+        r=abs(b)/sqrt(k*k+1);
+        ang=atan(k)*180/PI;
+    }
+    vector<double> ans;
+    ans.push_back(ang);
+    ans.push_back(r);
+    return ans;
+
+}
+
 #ifndef _countof
 #define _countof(_Array) (int)(sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
 #define DEG2RAD(x) ((x)*M_PI / 180.)
 
-using namespace rp::standalone::rplidar;
 
 RPlidarDriver *drv = NULL;
 // cv::Mat m=NULL;
@@ -427,6 +516,10 @@ int main(int argc, char *argv[])
                 int len = 0;
                 for (int i = 0; i < count; i++)
                 {
+                    ROS_INFO(": [point:%05.1lf  %05.1lf]", getAngle(nodes[i]),(float)nodes[i].dist_mm_q2 / 4.0f);
+                    if ((getAngle(nodes[i])>132 && getAngle(nodes[i])<210) && (float)nodes[i].dist_mm_q2 / 4.0f < 800) {
+                        continue;
+                    }
                     
                     if ((float)nodes[i].dist_mm_q2 / 4.0f < 4600)
                     {
@@ -598,6 +691,7 @@ int main(int argc, char *argv[])
 
 Result calPosion(std::vector<std::vector<double> > &nodes, int count)
 {
+    vector<vector<int> > region;
     if (count < 20)
     {
         struct Result r;
@@ -608,7 +702,6 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
     }
     try
     {
-        // ROS_INFO("[count:%d]", count);
         std::vector<cv::Point2d> XYdata(count);
         //std::vector<std::vector <double> > data(800, std::vector<double>(2));
         for (int pos = 0; pos < count; ++pos)
@@ -618,491 +711,147 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
             /*XYdata[pos][0] = nodes[pos][1] * cos(nodes[pos][0]);
 			XYdata[pos][1] = nodes[pos][1] * sin(nodes[pos][0]);*/
         }
-        //cv::Mat Mat_k = polyfit(XYdata, 1);
 
-        std::vector<cv::Point2d> temp(ksize);
-        std::vector<double> pList(XYdata.size() / ksize);
-        int c=0;
-        if(XYdata.size()%ksize==0){
-            c=XYdata.size();
-        }else{
-            c=XYdata.size() - ksize;
-        }
-        // TODO 对于余下的点被浪费的问题，当点数大于3时，可以将前面的点复制一下，添加到现有的里面
-        for (int i = 0; i < c; i += ksize)//for (int i = 0; i < XYdata.size() - ksize; i += ksize)
-        {
-            double dang=nodes[i+ksize-1][0]-nodes[i][0];
-            if(dang<0) dang+=360;
-            if(dang>45){
-                pList[i / ksize] = 4000;
-                continue;
-            }
-            copy(XYdata.begin() + i, XYdata.begin() + i + ksize, temp.begin());
-            cv::Mat Mat_k = polyfit(temp, 1);
-            double b = Mat_k.at<double>(0, 0);
-            double k = Mat_k.at<double>(1, 0);
-            pList[i / ksize] = std::atan(k) * 180 / PI;
-        }
-        // ROS_INFO("[pList1.size():%d]", pList.size());
-
-        //todo 输出调试
-//        cout<<count<<endl;
-//        cout << "pList:" << endl;
-//		for (int i = 0; i < pList.size(); i++)
-//		{
-//			cout <<i<<" "<< pList[i] << endl;
-//		}
-
-        std::vector<std::vector<int> > region;
-        // TODO 下面一段是有问题的
-//        for (int i = 0; i < pList.size();)
-//        {
-//            std::vector<int> col;
-//            int j = i;
-//            col.push_back(j);
-//            j = j + 1;
-//            for (; j < pList.size() - 1;)
-//            {
-//                if (std::abs(pList[(j + 1)] - pList[j]) < deltaAngMax || std::abs(std::abs(pList[(j + 1)] - pList[j]) - 180) < deltaAngMax)
-//                {
-//                    col.push_back(j);
-//                    j++;
-//                }
-//                else
-//                {
-//                    j++;
-//                    break;
-//                }
-//            }
-//            region.push_back(col);
-//            i = j;
-//        }
-
-        for (int i = 0; i < pList.size();)
-        {
-            std::vector<int> col;
+        int i=0;
+        while(i<count){
+            vector<int> col;
             col.push_back(i);
-            int j = i + 1;
-            for (; j < pList.size();)
-            {
-                if (std::abs(pList[(j)] - pList[j - 1]) < deltaAngMax || std::abs(std::abs(pList[(j)] - pList[j - 1]) - 180) < deltaAngMax)
-                {
+            int j=i+1;
+            while(j<count){
+//            cout<<dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<<" "
+//                <<15*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0]))//15*(nodes[j][1]+nodes[j-1][1])/2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[j-1][0]))<<" "
+//                << dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<<" "
+//                << abs(nodes[j][0]-nodes[j-1][0])<<endl;
+
+                if(( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])
+                <15*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//15*(nodes[j][1]+nodes[j-1][1])/2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[j-1][0]))
+                || dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<50)
+                && deltaAngle(nodes[j][0],nodes[j-1][0])<10 ){
                     col.push_back(j);
-                    j++;
-                }
-                else
+                    j+=1;
+                }else
                 {
                     break;
                 }
             }
-
-            // for(int j=i,j<pList.size()-1;){
-            //     if (std::abs(pList[(j + 1)] - pList[j]) < deltaAngMax
-            // 		|| std::abs(std::abs(pList[(j + 1) ] - pList[j]) - 180) < deltaAngMax) {
-            //         col.push_back(j+1);
-            //         j++;
-            //     }else{
-            //         j++;
-            //         break;
-            //     }
-            // }
             region.push_back(col);
-            i = j;
+            i=j;
         }
-        // ROS_INFO("[region1.size():%d]", region.size());
-
-//        cout << "region:" << endl;
-//		for (int i = 0; i < region.size(); i++)
-//		{
-//			for (int j = 0; j < region[i].size(); j++)
-//			{
-//				cout << region[i][j] << " ";
-//			}
-//			cout << endl;
-//		}
-
-        //int pListLen = pList.size()-1;
-        int tempInt = pList.size() - 1;
-        if (std::abs(pList[(tempInt + 1) % pList.size()] - pList[tempInt]) < deltaAngMax || std::abs(std::abs(pList[(tempInt + 1) % pList.size()] - pList[tempInt]) - 180) < deltaAngMax)
-        {
+        i=count-1;
+        int j=(i+1)%count;
+        if(( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])
+        <15*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[i][0]))//此处0度减去360度的问题
+        || dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])<50)
+        && deltaAngle(nodes[j][0],nodes[i][0])<10 ){
             region[region.size() - 1].insert(region[region.size() - 1].end(), region[0].begin(), region[0].end());
             region.erase(region.begin());
         }
-        int l=pList.size();
-        //删去过短的部分
-        for (int i = region.size() - 1; i >= 0; i--)
-        {
-            if (region[i].size() < 2)//< 2
-            {
-                int k=region[i][0];
-                if(pList[k]==4000){
-                    region.erase(region.begin() + i);
-//                    i--;
-                    continue;
-                }else if(std::abs(std::abs(pList[(k-1+l)%l]-pList[(k+1)%l])-90)<deltaAngMax){
-                    region.erase(region.begin() + i);
-//                    i-=2;
-                    i-=1;
-                    continue;
-                }
+
+        for (int i = region.size() - 1; i >= 0; i--){
+            if (region[i].size() <= 2){
+                region.erase(region.begin() + i);
             }
         }
-
-        // ROS_INFO("[region2.size():%d]", region.size());
-//        cout << "region:" << endl;
-//		for (int i = 0; i < region.size(); i++)
-//		{
-//			for (int j = 0; j < region[i].size(); j++)
-//			{
-//				cout << region[i][j] << " ";
-//			}
-//			cout << endl;
-//		}
-
-        std::vector<std::vector<int> > lines;
-        for (int i = 0; i < region.size(); i++)
-        {
-            std::vector<int> aline;
-            for (int j = 0; j < region[i].size(); j++)//for (int j = 1; j < region[i].size() - 1; j++)
-            {
-                int t = region[i][j];
-                for (int k = 0; k < 5; k++)
-                {
-                    aline.push_back(t * 5 + k);
-                }
-            }
-            lines.push_back(aline);
-        }
-        // ROS_INFO("[lines.size():%d]", lines.size());
-//        cout << "lines:" << endl;
-//		for (int i = 0; i < lines.size(); i++)
-//		{
-//			for (int j = 0; j < lines[i].size(); j++)
-//			{
-//				cout << lines[i][j] << " ";
-//			}
-//			cout << endl;
-//		}
-
-        std::vector<std::vector<double> > allLine;
-        for (int i = 0; i < lines.size(); i++)
-        {
-            std::vector<cv::Point2d> tempVec;
-            int last=lines[i].size() - 1;
-            if (lines[i].size() == lines[i][last] - lines[i][0] + 1)
-            {
-                copy(XYdata.begin() + lines[i][0], XYdata.begin() + lines[i][0] + lines[i].size(), std::back_inserter(tempVec)); // + lines[i].size()
-            }
-            else
-            {
-                for (int j = 0; j < lines[i].size(); j++)
-                {
-                    tempVec.push_back(XYdata[lines[i][j]]);
-                }
-            }
-            std::vector<double> kb(4);
-
-            fit_line(kb,tempVec);
-//
-//            cv::Mat Mat_k = polyfit(tempVec, 1);
-//            double b = Mat_k.at<double>(0, 0);
-//            double k = Mat_k.at<double>(1, 0);
-//            //pList[i / ksize] = k;
-//
-//            kb[0] = atan(k) * 180 / PI;
-//            kb[1] = std::abs(b) / sqrt(k * k + 1);
-            allLine.push_back(kb);
-        }
-        // ROS_INFO("[allLine.size():%d]", allLine.size());
-        if (allLine.size() < 2)
-        {
-            struct Result r;
-            r.y = -1001;
-            r.x = -1001;
-            r.ang = 400;
-            return r;
-        }
-        // ROS_INFO("[allLine is]");
-        // for (int i = 0; i < allLine.size(); i++)
-        // {
-        //     for (int j = 0; j < allLine[i].size(); j++)
-        //     {
-        //         ROS_INFO("[allLine %d %d:%lf]", i, j, allLine[i][j]);
-        //     }
-        // }
-
-//        cout << "allLine:" << endl;
-//		for (int i = 0; i < allLine.size(); i++)
-//		{
-//			for (int j = 0; j < allLine[i].size(); j++)
-//			{
-//				cout << allLine[i][j] << " ";
-//			}
-//			cout << endl;
-//		}
-
-        // 提高精度到时候可以用加权最小二乘法，因为越近精度越高，随机
-        // 一个角度减去另一个角度等于0度或者180度,而且距离原点距离相等，则判定属于直线
-        std::vector<std::vector<int> > allDeltaAng;
-        for (int i = allLine.size() - 2; i >= -1; i--)
-        {
-
-            int a = (i + allLine.size()) % allLine.size();
-            int b = (i + 1 + allLine.size()) % allLine.size();
-            // ROS_INFO("a,b:%d,%d", a, b);
-            std::vector<cv::Point2d> tempVec;
-            if (std::abs(lines[b][0] - lines[a][lines[a].size() - 1]) < deltaPointNum &&
-                std::abs(allLine[b][1] - allLine[a][1]) / allLine[a][1] < 0.05)
-            {
-                if (std::abs(allLine[b][0] - allLine[a][0]) < deltaAngMax ||
-                    std::abs(std::abs(allLine[b][0] - allLine[a][0]) - 180) < deltaAngMax)
-                {
-                    if (lines[a].size() == lines[a][lines[a].size() - 1] - lines[a][0] + 1)
-                    {
-                        std::copy(XYdata.begin() + lines[a][0], XYdata.begin() + lines[a][0] + lines[a].size(), std::back_inserter(tempVec));
-                    }
-                    else
-                    {
-                        for (int j = 0; j < lines[a].size(); j++)
-                        {
-                            tempVec.push_back(XYdata[lines[a][j]]);
-                        }
-                    }
-                    // ROS_INFO("2a,b:%d,%d", a, b);
-                    /*for (int j = 0; j < lines[a].size(); j++) {
-						tempVec.push_back(XYdata[lines[a][j]]);
-					}*/
-                    if (lines[b].size() == lines[b][lines[b].size() - 1] - lines[b][0] + 1)
-                    {
-                        std::copy(XYdata.begin() + lines[b][0], XYdata.begin() + lines[b][0] + lines[b].size(), std::back_inserter(tempVec));
-                    }
-                    else
-                    {
-                        for (int j = 0; j < lines[b].size(); j++)
-                        {
-                            tempVec.push_back(XYdata[lines[b][j]]);
-                        }
-                    }
-                    // ROS_INFO("3a,b:%d,%d", a, b);
-                    /*for (int j = 0; j < lines[b].size(); j++) {
-						tempVec.push_back(XYdata[lines[b][j]]);
-					}*/
-                    std::copy(lines[b].begin(), lines[b].end(), std::back_inserter(lines[a]));
-                    lines.erase(lines.begin() + b);
-                    std::vector<double> kb(4);
-                    fit_line(kb,tempVec);
-//                    cv::Mat Mat_k = polyfit(tempVec, 1);
-//                    double b1 = Mat_k.at<double>(0, 0);
-//                    double k = Mat_k.at<double>(1, 0);
-//                    //pList[i / ksize] = k;
-//                    std::vector<double> kb(2);
-//                    kb[0] = std::atan(k) * 180 / PI;
-//                    kb[1] = std::abs(b1) / std::sqrt(k * k + 1);
-                    allLine.erase(allLine.begin() + b);
-                    /*allLine.erase(allLine.begin() + a);
-					allLine.insert(allLine.begin() + a, kb);*/
-                    allLine[a] = kb;
-                }
-            }
-
-            if (allLine.size() < 2)
-            {
-
-
-
-                struct Result r;
-                r.y = -1001;
-                r.x = -1001;
-                r.ang = 400;
-                return r;
-            }
-        }
-        // ROS_INFO("[allLine2.size():%d]", allLine.size());
-        // ROS_INFO("[lines2.size():%d]", lines.size());
-//        cout << "allLine:" << endl;
-//		for (int i = 0; i < allLine.size(); i++)
-//		{
-//			for (int j = 0; j < allLine[i].size(); j++)
-//			{
-//				cout << allLine[i][j] << " ";
-//			}
-//			cout << endl;
-//		}
-//		cout << "lines:" << endl;
-//		for (int i = 0; i < lines.size(); i++)
-//		{
-//			for (int j = 0; j < lines[i].size(); j++)
-//			{
-//				cout << lines[i][j] << " ";
-//			}
-//			cout << endl;
-//		}
-
-        std::vector<int> suitLine;
-        for (int i = 0; i < allLine.size(); i++)
-        {
-            if (std::abs(std::abs(allLine[(i + 1) % allLine.size()][0] - allLine[i][0]) - 90) < 15)//deltaAngMax
-            { // 20
-                suitLine.push_back(i);
-            }
-        }
-
-//        cout<<"suitLine:"<<endl;
-//        for(int i=0;i<suitLine.size();i++){
-//            cout<<suitLine[i]<<endl;
+//        cout<<"region.size()"<<region.size()<<endl;
+//        for(int i=0;i<region.size();i++){
+//            for(int j=0;j<region[i].size();j++){
+//                cout<<region[i][j]<<" ";
+//            }
+//            cout<<endl;
 //        }
-
-        int ans;
-        if (suitLine.size() == 0)
+        vector<vector<double> > ans;
+        // 基于每个区域进行查找
+        for(int i = 0; i < region.size(); i++)
         {
+            vector<int>& col=region[i];
+            std::vector<cv::Point2d> everyXYdata;
+            for(int i = 0; i < col.size(); i++)
+            {
+                everyXYdata.push_back(XYdata[col[i]]);
+            }
+            std::vector<int> breakPoint;
+            polyContourFit(everyXYdata,breakPoint,100);
+            sort(breakPoint.begin(), breakPoint.end());
+            if(breakPoint.size()==0){
+                continue;
+            }
+            vector<int> p;
+            p.push_back(col[0]);
+            for(int i = 0; i < breakPoint.size(); i++)
+            {
+                p.push_back(col[breakPoint[i]]);
+            }
+            p.push_back(col[col.size()-1]);
 
-            // for (int i = 0; i < allLine.size(); i++)
-            // {
-            //     if (std::abs(std::abs(allLine[(i + 2) % allLine.size()][0] - allLine[i][0]) - 90) < deltaAngMax)
-            //     { // 20
-            //         // suitLine.push_back(i);
-            //         ROS_INFO("[real have answer]");
-            //     }
-            // }
+            for(int i = 1; i < p.size()-1; i++)
+            {
+                int a1=p[i-1];
+                int a2=p[i];
+                int a3=p[i+1];
+                if(directAngle(XYdata,a1,a2,a3)<0 && angleLength(XYdata,a1,a2,a3)>500
+                && isVertical(XYdata,a1,a2,a3) ){
+                    double ang;
+                    vector<cv::Point2d> l1,l2;
+                    vector<double> ar1,ar2;
+                    if(a1>a2){
+                        copy(XYdata.begin()+a1, XYdata.end(), std::back_inserter(l1));
+                        copy(XYdata.begin(), XYdata.begin()+a2, std::back_inserter(l1));
+                    }else
+                    {
+                        copy(XYdata.begin()+a1, XYdata.begin()+a2, std::back_inserter(l1));
+                    }
+                    ar1=resolveKBAngle(l1);
+                    if(a2>a3){
+                        copy(XYdata.begin()+a2, XYdata.end(), std::back_inserter(l2));
+                        copy(XYdata.begin(), XYdata.begin()+a3, std::back_inserter(l2));
+                    }else
+                    {
+                        copy(XYdata.begin()+a2, XYdata.begin()+a3, std::back_inserter(l2));
+                    }
+                    ar2=resolveKBAngle(l2);
+                    if(abs( abs(ar1[0]-ar2[0])-90 )<15 ){
+                        if ( (XYdata[a1].x-XYdata[a2].x)*1+(XYdata[a1].y-XYdata[a2].y)*tan(ar1[0]/180*PI)<0 ) {
+                            ang=ar1[0]>0?ar1[0]-180:ar1[0]+180;
+                        }else
+                        {
+                            ang=ar1[0];
+                        }
+                        vector<double> v;
+                        v.push_back(ar2[1]);
+                        v.push_back(ar1[1]);
+                        v.push_back(ang);
+                        v.push_back(distance(XYdata[a1],XYdata[a2]));
+                        v.push_back(distance(XYdata[a2],XYdata[a3]));
+                        ans.push_back(v);
+                    }
+                }
+            }
+        }
+        if (ans.size()==0) {
             struct Result r;
             r.y = -1001;
             r.x = -1001;
             r.ang = 400;
             return r;
-        }
-
-        if (suitLine.size() == 1 || (allLine.size() == 2 && suitLine.size() == 2))
+        }else
         {
-            ans = suitLine[0];
-        }
-        else
-        {
-            std::vector<double> lineLength;
-            for (int i = 0; i < suitLine.size(); i++)
+            int MaxDisInd = -1;
+            double MaxDis = 0;
+            double dbDis;
+            for(int i = 0; i < ans.size(); i++)
             {
-                int tempInt = suitLine[i];
-                int a1 = lines[tempInt][0];
-                int a2 = lines[tempInt][lines[tempInt].size() - 1];
-                int b1 = lines[(tempInt + 1) % allLine.size()][0];
-                int b2 = lines[(tempInt + 1) % allLine.size()][lines[(tempInt + 1) % allLine.size()].size() - 1];
-                double distance = sqrt(std::pow(XYdata[a1].x - XYdata[a2].x, 2) + std::pow(XYdata[a1].y - XYdata[a2].y, 2)) +
-                sqrt(std::pow(XYdata[b1].x - XYdata[b2].x, 2) + std::pow(XYdata[b1].y - XYdata[b2].y, 2));
-                lineLength.push_back(distance);
-//                cout<<i<<" "<<a1<<" "<<a2<<" "<<b1<<" "<<b2<<" "<<distance<<endl;
+                dbDis=ans[i][3]+ans[i][4];
+                if(dbDis>MaxDis){
+                    MaxDis=dbDis;
+                    MaxDisInd=i;
+                }
             }
-
-            std::vector<double>::iterator biggest = std::max_element(std::begin(lineLength), std::end(lineLength));
-            ans = suitLine[std::distance(std::begin(lineLength), biggest)];
-        }
-//        cout<<ans<<endl;
-
-        if (distance(XYdata[lines[(ans + 1) % lines.size()][lines[(ans + 1) % lines.size()].size() - 1]],
-        XYdata[lines[ans][0]]) > distance(XYdata[lines[(ans + 1) % lines.size()][0]],
-        XYdata[lines[ans][lines[ans].size() - 1]]))
-        {
             struct Result r;
-
-            r.y = allLine[ans][1];
-//            r.x = allLine[(ans + 1) % allLine.size()][1];
-
-            double k1=allLine[ans][2];
-            double b1=allLine[ans][3];
-            double k2=allLine[(ans + 1) % allLine.size()][2];
-            double b2=allLine[(ans + 1) % allLine.size()][3];
-            if(std::abs(k1)>30 || std::abs(k2)>30){
-                r.x = allLine[(ans + 1) % allLine.size()][1];
-            }else{
-                double x_cood=(b2-b1)/(k1-k2);
-                double y_cood;
-                if(std::abs(k1)>std::abs(k2)){
-                    y_cood=k2*x_cood+b2;
-                }else{
-                    y_cood=k1*x_cood+b1;
-                }
-                r.x=sqrt(x_cood*x_cood+y_cood*y_cood-r.y*r.y);
-            }
-            if(std::isnan(r.x)){
-                r.x = allLine[(ans + 1) % allLine.size()][1];
-            }
-
-
-            int b = lines[ans][0];
-            int a = lines[ans][lines[ans].size() - 1];
-
-            double theta = std::atan2(XYdata[b].y - XYdata[a].y, XYdata[b].x - XYdata[a].x) * 180 / PI;
-            if (std::abs(std::abs(theta - allLine[ans][0]) - 180) < 45)
-            {
-                if (allLine[ans][0] < 0)
-                    r.ang = allLine[ans][0] + 180;
-                else
-                {
-                    r.ang = allLine[ans][0] - 180;
-                }
-            }
-            else
-            {
-                r.ang = allLine[ans][0];
-            }
-
+            r.x = ans[MaxDisInd][0];
+            r.y = ans[MaxDisInd][1];
+            r.ang = ans[MaxDisInd][2];
             return r;
         }
-        else
-        {
-            struct Result r;
-            r.y = allLine[(ans + 1) % allLine.size()][1];
-//            r.x = allLine[ans][1];
-
-
-            double k1=allLine[ans][2];
-            double b1=allLine[ans][3];
-            double k2=allLine[(ans + 1) % allLine.size()][2];
-            double b2=allLine[(ans + 1) % allLine.size()][3];
-            if(std::abs(k1)>30 || std::abs(k2)>30){
-                r.x = allLine[ans][1];
-            }else{
-                double x_cood=(b2-b1)/(k1-k2);
-                double y_cood;
-                if(std::abs(k1)>std::abs(k2)){
-                    y_cood=k2*x_cood+b2;
-                }else{
-                    y_cood=k1*x_cood+b1;
-                }
-                r.x=sqrt(x_cood*x_cood+y_cood*y_cood-r.y*r.y);
-            }
-            if(std::isnan(r.x)){
-                r.x = allLine[ans][1];
-            }
-
-            int b = lines[(ans + 1) % allLine.size()][0];
-            int a = lines[(ans + 1) % allLine.size()][lines[(ans + 1) % allLine.size()].size() - 1];
-
-            double theta = std::atan2(XYdata[b].y - XYdata[a].y, XYdata[b].x - XYdata[a].x) * 180 / PI;
-            //cout << theta << " " << allLine[(ans + 1) % allLine.size()][0] << endl;
-            if (std::abs(std::abs(theta - allLine[(ans + 1) % allLine.size()][0]) - 180) < 45)
-            {
-                if (allLine[(ans + 1) % allLine.size()][0] < 0)
-                    r.ang = allLine[(ans + 1) % allLine.size()][0] + 180;
-                else
-                {
-                    r.ang = allLine[(ans + 1) % allLine.size()][0] - 180;
-                }
-            }
-            else
-            {
-                r.ang = allLine[(ans + 1) % allLine.size()][0];
-            }
-            /*if (allLine[(ans + 1) % allLine.size()][0] - allLine[ans][0] > 0) {
-				r.ang = 180 - allLine[ans][0];
-
-			}
-			else
-			{
-				r.ang = allLine[(ans + 1) % allLine.size()][0];
-			}*/
-            return r;
-        }
-
-
     }
     catch (...)
     {
