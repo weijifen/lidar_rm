@@ -15,7 +15,6 @@
 using namespace rp::standalone::rplidar;
 using namespace std;
 using namespace cv;
-
 int ksize = 5; //5         // ksize个点拟合一条直线
 double deltaAngMax = 20; // 小于deltaAngMax认为可能是一条直线
 int deltaPointNum = 20;
@@ -39,7 +38,13 @@ double distance(cv::Point2d p1, cv::Point2d p2);
 bool dataSelect(std::queue<double>  selectData,double x);
 bool angleSelect(std::queue<double>  selectData,double x);
 double hough(std::vector<std::vector<double>>& data, int count);
-int deltaAngle(int a,int b);
+// int deltaAngle(int a,int b);
+double deltaAngle(double a,double b){
+    if(a==b) return 0;
+    double c=max(a,b);
+    double d=min(a,b);
+    return min(c-d,d-c+360);
+}
 void fit_line(std::vector<double> &kb,std::vector<cv::Point2d> &tempVec);
 
 double dis_cos(double ang1,double r1,double ang2,double r2){
@@ -51,7 +56,9 @@ double angle2Radian(double angle){
 double radian2Angle(double radian){
     return radian*180/PI;
 }
-void polyContourFit(std::vector<cv::Point2d> &XYdata,std::vector<int> &breakPoint,double eps){
+
+double OFF_SET=61.7334;                                                                                                                                                                                                                                                                
+void polyContourFit(std::vector<cv::Point2d> &XYdata,std::vector<int> &breakPoint,int start, double eps){
     int n=XYdata.size();
     if(n<=2){
         return;
@@ -71,20 +78,21 @@ void polyContourFit(std::vector<cv::Point2d> &XYdata,std::vector<int> &breakPoin
         if( dbDis > MaxDis)
         {
             MaxDis = dbDis;
+            MaxDis = dbDis;
             maxDisInd = i;
         }
     }
-    if(MaxDis > eps)
+    if(MaxDis > eps && (maxDisInd>2 && n-1-maxDisInd>2))
     {
         std::vector<cv::Point2d> XYdataTemp;
         copy(XYdata.begin(), XYdata.begin() + maxDisInd, std::back_inserter(XYdataTemp));
-        polyContourFit(XYdataTemp,breakPoint,100);
+        polyContourFit(XYdataTemp,breakPoint,start,100);
 
-        breakPoint.push_back(maxDisInd);
+        breakPoint.push_back(start+maxDisInd);
 
         XYdataTemp.clear();
         copy(XYdata.begin() + maxDisInd, XYdata.end(), std::back_inserter(XYdataTemp));
-        polyContourFit(XYdataTemp,breakPoint,100);
+        polyContourFit(XYdataTemp,breakPoint,start+maxDisInd,100);
         return;
     }else
     {
@@ -148,6 +156,7 @@ vector<double> resolveKBAngle(std::vector<cv::Point2d> &XYdata){
             k=1.0/k;
         }
         ang=atan(k)*180/PI;
+        b=-k*b;
 
     }else
     {
@@ -160,9 +169,12 @@ vector<double> resolveKBAngle(std::vector<cv::Point2d> &XYdata){
     vector<double> ans;
     ans.push_back(ang);
     ans.push_back(r);
+    ans.push_back(k);
+    ans.push_back(b);
     return ans;
 
 }
+
 
 #ifndef _countof
 #define _countof(_Array) (int)(sizeof(_Array) / sizeof(_Array[0]))
@@ -516,7 +528,7 @@ int main(int argc, char *argv[])
                 int len = 0;
                 for (int i = 0; i < count; i++)
                 {
-                    ROS_INFO(": [point:%05.1lf  %05.1lf]", getAngle(nodes[i]),(float)nodes[i].dist_mm_q2 / 4.0f);
+                    // ROS_INFO(": [point:%05.1lf  %05.1lf]", getAngle(nodes[i]),(float)nodes[i].dist_mm_q2 / 4.0f);
                     if ((getAngle(nodes[i])>132 && getAngle(nodes[i])<210) && (float)nodes[i].dist_mm_q2 / 4.0f < 800) {
                         continue;
                     }
@@ -532,7 +544,7 @@ int main(int argc, char *argv[])
                 len=len-1;
                 Result r;
                 r = calPosion(data, len);
-                ROS_INFO(": [node:%05.1lf  %05.1lf  %03.1lf]", r.x, r.y, -r.ang);
+                ROS_INFO(": [node:%05.1lf  %05.1lf  %03.1lf]", r.x, r.y, r.ang);
                 if(r.x>50&& r.y>50){
                     
                     
@@ -614,7 +626,7 @@ int main(int argc, char *argv[])
                 if(r.x<30 || r.y<30){
                     // r.ang+=90;
                     double angle=r.ang;
-                    double angle_increment=45-r.ang;
+                    double angle_increment=45+r.ang;
                     
                     for(int i = 0; i < len; i++)
                     {
@@ -657,10 +669,10 @@ int main(int argc, char *argv[])
                     // angle_memory[angle_memory_index++]=r.ang;
                     continue;
                 }else{
-                    if(dataSelect(selectData,r.x) ){//&& angleSelect(selectAngle,-r.ang)
+                    if(dataSelect(selectData,r.x) ){//&& angleSelect(selectAngle,r.ang)
                         msg.coordinate_x = r.x;
                         msg.coordinate_y = r.y;
-                        msg.angle = -r.ang;
+                        msg.angle = r.ang;
 
                         scan_pub.publish(msg);
                     }
@@ -669,7 +681,7 @@ int main(int argc, char *argv[])
                     selectData.pop();
                     // selectAngle.pop();                    
                     selectData.push(r.x);
-                    // selectAngle.push(-r.ang);
+                    // selectAngle.push(r.ang);
                 }
                 ros::spinOnce();
             }
@@ -724,7 +736,7 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
 //                << abs(nodes[j][0]-nodes[j-1][0])<<endl;
 
                 if(( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])
-                <15*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//15*(nodes[j][1]+nodes[j-1][1])/2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[j-1][0]))
+                <18*(nodes[j][1]+nodes[j-1][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[j-1][0])))//15*(nodes[j][1]+nodes[j-1][1])/2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[j-1][0]))
                 || dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<50)
                 && deltaAngle(nodes[j][0],nodes[j-1][0])<10 ){
                     col.push_back(j);
@@ -740,7 +752,7 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
         i=count-1;
         int j=(i+1)%count;
         if(( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])
-        <15*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[i][0]))//此处0度减去360度的问题
+        <18*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[i][0]))//此处0度减去360度的问题
         || dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])<50)
         && deltaAngle(nodes[j][0],nodes[i][0])<10 ){
             region[region.size() - 1].insert(region[region.size() - 1].end(), region[0].begin(), region[0].end());
@@ -770,8 +782,13 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
                 everyXYdata.push_back(XYdata[col[i]]);
             }
             std::vector<int> breakPoint;
-            polyContourFit(everyXYdata,breakPoint,100);
-            sort(breakPoint.begin(), breakPoint.end());
+            polyContourFit(everyXYdata,breakPoint,0,100);
+//            sort(breakPoint.begin(), breakPoint.end());
+
+//            for(int i=0;i<breakPoint.size();i++){
+//                cout<<breakPoint[i]<<endl;
+//            }
+//            cout<<endl;
             if(breakPoint.size()==0){
                 continue;
             }
@@ -816,7 +833,25 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
                         {
                             ang=ar1[0];
                         }
+
                         vector<double> v;
+//                        double k1=ar1[2];
+//            double b1=ar1[3];
+//            double k2=ar1[2];
+//            double b2=ar1[3];
+//            if(std::abs(k1)>1000 || std::abs(k2)>1000){
+//                v.push_back(ar2[1]);
+//            }else{
+//                double x_cood=(b2-b1)/(k1-k2);
+//                double y_cood;
+//                if(std::abs(k1)>std::abs(k2)){
+//                    y_cood=k2*x_cood+b2;
+//                }else{
+//                    y_cood=k1*x_cood+b1;
+//                }
+//                v.push_back(sqrt(x_cood*x_cood+y_cood*y_cood-ar1[1]*ar1[1]));
+//            }
+
                         v.push_back(ar2[1]);
                         v.push_back(ar1[1]);
                         v.push_back(ang);
@@ -849,7 +884,11 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
             struct Result r;
             r.x = ans[MaxDisInd][0];
             r.y = ans[MaxDisInd][1];
-            r.ang = ans[MaxDisInd][2];
+            r.ang = -ans[MaxDisInd][2];
+            r.ang-=61.7334;
+            if(r.ang<-180){
+                r.ang+=360;
+            }
             return r;
         }
     }
