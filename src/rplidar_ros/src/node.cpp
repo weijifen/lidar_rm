@@ -135,6 +135,7 @@ bool needFlip(std::vector<cv::Point2d> &XYdata){
     return abs(XYdata[0].x-XYdata[n-1].x)<abs(XYdata[0].y-XYdata[n-1].y);
 }
 vector<double> resolveKBAngle(std::vector<cv::Point2d> &XYdata){
+    vector<double> ans(5);
     double ang=0;
     double r=0;
     double k,b;
@@ -148,6 +149,10 @@ vector<double> resolveKBAngle(std::vector<cv::Point2d> &XYdata){
         cv::Mat Mat_k = polyfit(YXdata, 1);
         b = Mat_k.at<double>(0, 0);
         k = Mat_k.at<double>(1, 0);
+
+        ans[2]=k;
+        ans[3]=b;
+        ans[4]=1;
         r=abs(b)/sqrt(k*k+1);
         if (abs(k)<0.00001) {
             k=k>0?100000:-100000;
@@ -156,23 +161,50 @@ vector<double> resolveKBAngle(std::vector<cv::Point2d> &XYdata){
             k=1.0/k;
         }
         ang=atan(k)*180/PI;
-        b=-k*b;
+//        b=-k*b;
 
     }else
     {
         cv::Mat Mat_k = polyfit(XYdata, 1);
         b = Mat_k.at<double>(0, 0);
         k = Mat_k.at<double>(1, 0);
+        ans[2]=k;
+        ans[3]=b;
+        ans[4]=0;
         r=abs(b)/sqrt(k*k+1);
         ang=atan(k)*180/PI;
     }
-    vector<double> ans;
-    ans.push_back(ang);
-    ans.push_back(r);
-    ans.push_back(k);
-    ans.push_back(b);
+    ans[0]=ang;
+    ans[1]=r;
+
+//    ans.push_back(ang);
+//    ans.push_back(r);
+//    ans.push_back(k);
+//    ans.push_back(b);
     return ans;
 
+}
+double interL2(vector<double> &ar0,vector<double> &ar1){
+    double a0,b0,c0,a1,b1,c1,D;
+    if(ar0[4]){
+        a0=-1.0;
+        b0=ar0[2];
+        c0=ar0[3];
+    }else{
+        a0=ar0[2];
+        b0=-1.0;
+        c0=ar0[3];
+    }
+    if(ar1[4]){
+        a1=-1.0;
+        b1=ar1[2];
+        c1=ar1[3];
+    }else{
+        a1=ar1[2];
+        b1=-1.0;
+        c1=ar1[3];
+    }
+    return ((b0*c1-b1*c0)*(b0*c1-b1*c0)+(a1*c0-a0*c1)*(a1*c0-a0*c1) )/( (a0*b1-a1*b0)*(a0*b1-a1*b0));
 }
 
 
@@ -835,6 +867,7 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
                         }
 
                         vector<double> v;
+                        v.push_back(sqrt(interL2(ar1,ar2)-ar1[1]*ar1[1]));
 //                        double k1=ar1[2];
 //            double b1=ar1[3];
 //            double k2=ar1[2];
@@ -852,7 +885,7 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
 //                v.push_back(sqrt(x_cood*x_cood+y_cood*y_cood-ar1[1]*ar1[1]));
 //            }
 
-                        v.push_back(ar2[1]);
+//                        v.push_back(ar2[1]);
                         v.push_back(ar1[1]);
                         v.push_back(ang);
                         v.push_back(distance(XYdata[a1],XYdata[a2]));
@@ -885,10 +918,17 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
             r.x = ans[MaxDisInd][0];
             r.y = ans[MaxDisInd][1];
             r.ang = -ans[MaxDisInd][2];
-            r.ang-=61.7334;
+            r.ang-=OFF_SET;
+            r.ang-=90;
             if(r.ang<-180){
                 r.ang+=360;
             }
+
+            double length=453.95225;
+            double A=45.09228;
+
+            r.x+=length*sin(A+r.ang/180*PI);
+            r.y+=length*cos(A+r.ang/180*PI);
             return r;
         }
     }
