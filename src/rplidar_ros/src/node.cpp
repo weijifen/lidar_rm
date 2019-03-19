@@ -57,11 +57,12 @@ double radian2Angle(double radian){
     return radian*180/PI;
 }
 
-double OFF_SET=61.7334;                                                                                                                                                                                                                                                                
-void polyContourFit(std::vector<cv::Point2d> &XYdata,std::vector<int> &breakPoint,int start, double eps){
+double OFF_SET=-31.16;                                                                                                                                                                                                                                                                
+vector<int> polyContourFit(std::vector<cv::Point2d> &XYdata,double eps){
+    vector<int> breakPoint;
     int n=XYdata.size();
     if(n<=2){
-        return;
+        return breakPoint;
     }
     double dis=distance(XYdata[0],XYdata[n-1]);
     double cosTheta = (XYdata[n-1].x - XYdata[0].x) / dis;
@@ -84,19 +85,61 @@ void polyContourFit(std::vector<cv::Point2d> &XYdata,std::vector<int> &breakPoin
     }
     if(MaxDis > eps && (maxDisInd>2 && n-1-maxDisInd>2))
     {
-        std::vector<cv::Point2d> XYdataTemp;
-        copy(XYdata.begin(), XYdata.begin() + maxDisInd, std::back_inserter(XYdataTemp));
-        polyContourFit(XYdataTemp,breakPoint,start,100);
 
-        breakPoint.push_back(start+maxDisInd);
+        std::vector<cv::Point2d> XYdataTemp;
+        vector<int> breakPoint0;
+        copy(XYdata.begin(), XYdata.begin() + maxDisInd, std::back_inserter(XYdataTemp));
+        breakPoint0=polyContourFit(XYdataTemp,eps);
+
+
+
+        vector<int> breakPoint1;
 
         XYdataTemp.clear();
+        // copy(XYdata.begin() + maxDisInd+1, XYdata.end(), std::back_inserter(XYdataTemp));
         copy(XYdata.begin() + maxDisInd, XYdata.end(), std::back_inserter(XYdataTemp));
-        polyContourFit(XYdataTemp,breakPoint,start+maxDisInd,100);
-        return;
+        breakPoint1=polyContourFit(XYdataTemp,eps);
+//        cout<<breakPoint1[0]<<endl;
+        if(breakPoint0.size()==0 && breakPoint1.size()==0){
+            breakPoint.push_back(maxDisInd);
+            return breakPoint;
+        }else{
+            int index0=0;
+            int index1=n-1;
+            if(breakPoint.size() != 0)
+                index0=breakPoint0[breakPoint0.size()-1]+1;
+            if(breakPoint1.size() != 0)
+                index1=breakPoint1[0]+maxDisInd-1;
+
+            dis=distance(XYdata[index0],XYdata[index1]);
+            cosTheta = (XYdata[index1].x - XYdata[index0].x) / dis;
+            sinTheta = - ( XYdata[index1].y - XYdata[index0].y )/dis;
+            dbDis = abs( (XYdata[maxDisInd].y - XYdata[index0].y) * cosTheta
+                + (XYdata[maxDisInd].x - XYdata[index0].x)* sinTheta);
+
+//            dis=sqrt( (XYdata[index0].x-XYdata[index1].y)**2+(Y[index0]-Y[index1])**2 );
+//            cosTheta=(X[index1]-X[index0])/dis;
+//            sinTheta=-(Y[index1]-Y[index0])/dis;
+//            dbDis=np.abs( (Y[maxDisInd]-Y[index0])*cosTheta+(X[maxDisInd]-X[index0])*sinTheta );
+            if(breakPoint0.size()!=0){
+                for(int j=0;j<breakPoint0.size();j++){
+                    breakPoint.push_back(breakPoint0[j]);
+                }
+            }
+
+            if(dbDis>eps/2)
+                breakPoint.push_back(maxDisInd);
+            if(breakPoint1.size()!=0){
+                for(int j=0;j<breakPoint1.size();j++){
+                    breakPoint.push_back(breakPoint1[j]+maxDisInd);
+                }
+            }
+            return breakPoint;
+        }
+        return breakPoint;
     }else
     {
-        return;
+        return breakPoint;
     }
 
 
@@ -515,8 +558,8 @@ int main(int argc, char *argv[])
             }
         }
     }
-    _u16 pwm = 320;//300时大概800个点
-    drv->setMotorPWM(pwm);
+    // _u16 pwm = 760;//320时大概800个点,5Hz 760时15Hz,是用户手册上的上限制，1023是最大值，21Hz
+    // drv->setMotorPWM(pwm);
 
     if (IS_OK(op_result))
     {
@@ -561,7 +604,7 @@ int main(int argc, char *argv[])
                 for (int i = 0; i < count; i++)
                 {
                     // ROS_INFO(": [point:%05.1lf  %05.1lf]", getAngle(nodes[i]),(float)nodes[i].dist_mm_q2 / 4.0f);
-                    if ((getAngle(nodes[i])>132 && getAngle(nodes[i])<210) && (float)nodes[i].dist_mm_q2 / 4.0f < 800) {
+                    if ((getAngle(nodes[i])>210 && getAngle(nodes[i])<300) && (float)nodes[i].dist_mm_q2 / 4.0f < 800) {
                         continue;
                     }
                     
@@ -767,10 +810,11 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
 //                << dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<<" "
 //                << abs(nodes[j][0]-nodes[j-1][0])<<endl;
 
-                if(( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])
-                <18*(nodes[j][1]+nodes[j-1][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[j-1][0])))//15*(nodes[j][1]+nodes[j-1][1])/2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[j-1][0]))
+                if( (( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])
+                <30*(nodes[j][1]+nodes[j-1][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[j-1][0])))//15*(nodes[j][1]+nodes[j-1][1])/2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[j-1][0]))
                 || dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<50)
-                && deltaAngle(nodes[j][0],nodes[j-1][0])<10 ){
+                && deltaAngle(nodes[j][0],nodes[j-1][0])<10 )|| (nodes[j][1]<250 && nodes[j-1][1]<250
+                && dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[j-1][0]),nodes[j-1][1])<400)){
                     col.push_back(j);
                     j+=1;
                 }else
@@ -783,10 +827,12 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
         }
         i=count-1;
         int j=(i+1)%count;
-        if(( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])
-        <18*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[i][0]))//此处0度减去360度的问题
+        if((( (dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])
+        <30*(nodes[j][1]+nodes[i][1])/2*angle2Radian(deltaAngle(nodes[j][0],nodes[i][0])))//2*abs(angle2Radian(nodes[j][0])-angle2Radian(nodes[i][0]))//此处0度减去360度的问题
         || dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])<50)
-        && deltaAngle(nodes[j][0],nodes[i][0])<10 ){
+        && deltaAngle(nodes[j][0],nodes[i][0])<10 )
+        || (nodes[j][1]<250 && nodes[i][1]<250
+                && dis_cos(angle2Radian(nodes[j][0]),nodes[j][1],angle2Radian(nodes[i][0]),nodes[i][1])<400)){
             region[region.size() - 1].insert(region[region.size() - 1].end(), region[0].begin(), region[0].end());
             region.erase(region.begin());
         }
@@ -814,7 +860,7 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
                 everyXYdata.push_back(XYdata[col[i]]);
             }
             std::vector<int> breakPoint;
-            polyContourFit(everyXYdata,breakPoint,0,100);
+            breakPoint=polyContourFit(everyXYdata,100);
 //            sort(breakPoint.begin(), breakPoint.end());
 
 //            for(int i=0;i<breakPoint.size();i++){
@@ -851,14 +897,16 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
                     }
                     ar1=resolveKBAngle(l1);
                     if(a2>a3){
-                        copy(XYdata.begin()+a2, XYdata.end(), std::back_inserter(l2));
+                        if(a2+1<XYdata.size()){
+                            copy(XYdata.begin()+a2+1, XYdata.end(), std::back_inserter(l2));
+                        }
                         copy(XYdata.begin(), XYdata.begin()+a3, std::back_inserter(l2));
                     }else
                     {
-                        copy(XYdata.begin()+a2, XYdata.begin()+a3, std::back_inserter(l2));
+                        copy(XYdata.begin()+a2+1, XYdata.begin()+a3, std::back_inserter(l2));
                     }
                     ar2=resolveKBAngle(l2);
-                    if(abs( abs(ar1[0]-ar2[0])-90 )<15 ){
+                    if(abs( abs(ar1[0]-ar2[0])-90 )<20 ){
                         if ( (XYdata[a1].x-XYdata[a2].x)*1+(XYdata[a1].y-XYdata[a2].y)*tan(ar1[0]/180*PI)<0 ) {
                             ang=ar1[0]>0?ar1[0]-180:ar1[0]+180;
                         }else
@@ -924,8 +972,8 @@ Result calPosion(std::vector<std::vector<double> > &nodes, int count)
                 r.ang+=360;
             }
 
-            double length=453.95225;
-            double A=45.09228;
+            double length=406.4;// 453.95225;
+            double A=43.07;
 
             r.x+=length*sin(A+r.ang/180*PI);
             r.y+=length*cos(A+r.ang/180*PI);
